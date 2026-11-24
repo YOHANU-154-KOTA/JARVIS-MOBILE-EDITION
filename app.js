@@ -203,6 +203,39 @@ async function runTool(raw) {
   return null;
 }
 
+// Cloudflare Worker endpoint. The Gemini API key stays on Cloudflare.
+const JARVIS_AI_ENDPOINT = "https://jarvis-ai-backend.kotayohanu91.workers.dev";
+
+async function askAI(message) {
+  const response = await fetch(JARVIS_AI_ENDPOINT, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      message: message
+    })
+  });
+
+  let data;
+  try {
+    data = await response.json();
+  } catch {
+    throw new Error("The AI server returned an unreadable response.");
+  }
+
+  if (!response.ok || !data.success) {
+    const detail = data.error || `Server request failed (${response.status}).`;
+    throw new Error(detail);
+  }
+
+  if (typeof data.reply !== "string" || !data.reply.trim()) {
+    throw new Error("The AI server returned an empty answer.");
+  }
+
+  return data.reply.trim();
+}
+
 async function handleCommand(raw) {
   const command = String(raw || "").trim();
   if (!command) return;
@@ -216,9 +249,10 @@ async function handleCommand(raw) {
       say(result);
       saveHistory("assistant", result);
     } else {
-      const fallback = "I can handle built-in commands, but the AI conversation brain is not connected in this zero-cost Stage 1 build. Try saying Help.";
-      say(fallback);
-      saveHistory("assistant", fallback);
+      // Unknown built-in commands are sent to the Cloudflare Gemini backend.
+      const aiReply = await askAI(command);
+      say(aiReply);
+      saveHistory("assistant", aiReply);
     }
   } catch (error) {
     say("Sorry. " + error.message);
@@ -386,4 +420,5 @@ if (!(window.SpeechRecognition || window.webkitSpeechRecognition)) {
   $("listenBtn").disabled = true;
   $("wakeBtn").disabled = true;
   $("hintText").textContent = "Voice recognition is unavailable in this browser. Open the hosted app in a supported browser.";
-}
+       }
+     
